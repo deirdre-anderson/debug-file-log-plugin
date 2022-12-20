@@ -9,7 +9,7 @@ local typedefs = require "kong.db.schema.typedefs"
 
 
 return {
-  name = "file-log",
+  name = "debug-file-log",
   fields = {
     { protocols = typedefs.protocols },
     { config = {
