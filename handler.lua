@@ -17,7 +17,9 @@ local sandbox = require "kong.tools.sandbox".sandbox
 
 
 local kong = kong
-
+local ngx = ngx
+local utils = require "kong.tools.utils"
+local concat = table.concat
 
 local O_CREAT = system_constants.O_CREAT()
 local O_WRONLY = system_constants.O_WRONLY()
@@ -72,13 +74,30 @@ end
 
 
 local FileLogHandler = {
-  PRIORITY = 9,
+  PRIORITY = 10000,
   VERSION = kong_meta.core_version,
 }
 
 function FileLogHandler:access(conf)
-    kong.service.request.enable_buffering()
-    kong.ctx.plugin.req_body = kong.request.get_raw_body()
+  kong.ctx.plugin.request_body = kong.request.get_raw_body()
+end
+
+function FileLogHandler:body_filter(conf)
+  local ctx = ngx.ctx
+  local chunk, eof = ngx.arg[1], ngx.arg[2]
+
+  ctx.rt_body_chunks = ctx.rt_body_chunks or {}
+  ctx.rt_body_chunk_number = ctx.rt_body_chunk_number or 1
+
+  if eof then
+    local chunks = concat(ctx.rt_body_chunks)
+    ngx.arg[1] = chunks
+    kong.ctx.plugin.response_body = chunks
+  else
+    ctx.rt_body_chunks[ctx.rt_body_chunk_number] = chunk
+    ctx.rt_body_chunk_number = ctx.rt_body_chunk_number + 1
+    ngx.arg[1] = nil
+  end
 end
 
 function FileLogHandler:log(conf)
@@ -90,11 +109,11 @@ function FileLogHandler:log(conf)
   end
 
   local message = kong.log.serialize()
-  if kong.ctx.plugin.req_body then
-    message.request.body = kong.ctx.plugin.req_body
+  if kong.ctx.plugin.request_body then
+    message.request.body = kong.ctx.plugin.request_body
   end
-  if  kong.service.response.get_raw_body() then
-    message.response.body = kong.service.response.get_raw_body()
+  if kong.ctx.plugin.response_body then 
+    message.response.body = kong.ctx.plugin.response_body
   end
   log(conf, message)
 end
